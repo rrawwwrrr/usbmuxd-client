@@ -1,0 +1,13 @@
+include:
+  - project: 'cicd-template/build'
+    ref: main
+    file:
+      - 'build_harbor_all.yaml'
+
+stages:
+  - build
+
+build:
+  extends: .build
+  only:
+    - main

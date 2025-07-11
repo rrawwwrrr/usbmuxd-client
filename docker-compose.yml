@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  ios:
+    build: .
+    privileged: true
+    environment:
+      - USBMUXD_HOST=192.168.48.146
+      - USBMUXD_PORT=27071
+      - USBMUXD_SOCKET_ADDRESS=/var/run/usbmuxd
+    tmpfs:
+      - /tmp/usbmuxd
+#      - /var/run/usbmuxd
