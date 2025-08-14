@@ -31,8 +31,9 @@ var (
 
 // tunnels — список туннелей, которые нужно запустить
 var tunnels = []Tunnel{
-	{localAddr: serverSocket, handshake: "usbmuxd"},
-	{localAddr: "127.0.0.1:7777", handshake: "forward"},
+	{localAddr: serverSocket, handshake: "00008030001454190EEB802E"},
+	//{localAddr: serverSocket, handshake: "usbmuxd"},
+	//{localAddr: "127.0.0.1:7777", handshake: "forward"},
 }
 
 func isClosedError(err error) bool {
