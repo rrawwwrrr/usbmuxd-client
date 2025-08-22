@@ -1,13 +1,82 @@
 include:
-  - project: 'cicd-template/build'
-    ref: main
-    file:
-      - 'build_harbor_all.yaml'
+  - project: boilerplates/actions/docker-buildx
+    ref: v5.1.3
+    file: /template.yaml
+  - project: boilerplates/actions/artifactory-cleanup-action
+    ref: v4.0.10
+    file: /template.yaml
 
 stages:
   - build
+  - cleanup
 
-build:
-  extends: .build
-  only:
-    - main
+.develop-rules:
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+
+.prod-rules:
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+    - if: '$CI_COMMIT_TAG'
+
+.dev_runner_tag:
+  tags:
+    - xfarm-dev
+
+.prod_runner_tag:
+  tags:
+    - xfarm-prod
+
+.cleanup-artifactory:
+  stage: cleanup
+  extends:
+    - .artifactory-cleanup-action
+  allow_failure: true
+  variables:
+    X5_ARTIFACTORY_CLEANUP_ACTION_PATH: /xfarm/go-ios
+    X5_ARTIFACTORY_CLEANUP_ACTION_LIMIT_TIME: "60minutes"
+    X5_ARTIFACTORY_CLEANUP_ACTION_LIMIT_COUNT: 0
+    X5_ARTIFACTORY_CLEANUP_ACTION_LOGIN: $REGISTRY_USER
+    X5_ARTIFACTORY_CLEANUP_ACTION_PASSWORD: $REGISTRY_PASSWORD
+    X5_ARTIFACTORY_CLEANUP_ACTION_REPO: $REGISTRY_URI
+    X5_ARTIFACTORY_CLEANUP_ACTION_DRYRUN: "false"
+    X5_ACTION_LOGLEVEL: "DEBUG"
+
+.build:
+  stage: build
+  extends: .docker-buildx
+  variables:
+    X5_DOCKER_BUILDX_DOCKERFILE: ".infra/docker/Dockerfile"
+    X5_DOCKER_BUILDX_DESTINATION: $REGISTRY_URI/xfarm/go-ios:latest
+    X5_DOCKER_BUILDX_DOCKERCONFIG: $DOCKER_AUTH_CONFIG
+    X5_DOCKER_BUILDX_PUSH: "true"
+    X5_ACTION_DEBUG: "true"
+    X5_DOCKER_BUILDX_REGISTRY_CAPACITY_CHECK: "false"
+
+build:dev:
+  extends:
+    - .build
+    - .develop-rules
+    - .dev_runner_tag
+  environment: dev
+
+build:prod:
+  extends:
+    - .build
+    - .prod-rules
+    - .prod_runner_tag
+  environment: prod
+
+cleanup-artifcatory-dev:
+  extends:
+    - .cleanup-artifactory
+    - .develop-rules
+    - .dev_runner_tag
+  when: manual
+
+cleanup-artifcatory-prod:
+  extends:
+    - .cleanup-artifactory
+    - .prod-rules
+    - .prod_runner_tag
+  when: manual
