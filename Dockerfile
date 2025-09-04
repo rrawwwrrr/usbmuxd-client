@@ -11,7 +11,7 @@ RUN chmod +x client
 
 FROM ubuntu
 COPY --from=builder /app/client /client
-RUN groupadd -g 1301 androidusr && useradd -u 1300 -g 1301 androidusr && chmod +x /client && chown user:user /client
+RUN groupadd -g 1301 androidusr && useradd -u 1300 -g 1301 androidusr && chmod +x /client && chown androidusr:androidusr /client
 USER androidusr
 
 ENTRYPOINT ["/client"]
