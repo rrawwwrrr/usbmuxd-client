@@ -2,7 +2,7 @@ include:
   - project: 'cicd-template/build'
     ref: main
     file:
-      - 'build_harbor_all.yaml'
+      - 'build_harbor.yaml'
 
 stages:
   - build
