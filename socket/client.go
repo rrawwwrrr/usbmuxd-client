@@ -136,6 +136,7 @@ func handleUnixSocket(t Tunnel) {
 	}
 
 	listener, err := net.Listen("unix", socketPath)
+
 	if err != nil {
 		log.WithError(err).WithField("socket", socketPath).Fatal("Не удалось создать Unix-сокет")
 	}

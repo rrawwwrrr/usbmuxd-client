@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: usbmuxd-client
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: usbmuxd-client
+  template:
+    metadata:
+      labels:
+        app: usbmuxd-client
+    spec:
+      containers:
+        - name: usbmuxd-client
+          image: harbor.rnd.lanit.ru/public/usbmuxd-client
+          env:
+            - name: ENABLE_GO_IOS_AGENT
+              value: "kernel"
+            - name: TZ
+              value: "Europe/Moscow"
+            - name: USBMUXD_HOST
+              value: "rrawww.ru"
+            - name: USBMUXD_PORT
+              value: "31543"
+            - name: USBMUXD_SOCKET
+              value: "/tmp/usbmuxd/sock"
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: usbmuxd-tmpfs
+              mountPath: /tmp/usbmuxd
+      volumes:
+        - name: usbmuxd-tmpfs
+          emptyDir: {}
