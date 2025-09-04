@@ -13,9 +13,12 @@ import (
 )
 
 func EncryptHandshake(plaintext string) (string, error) {
-	key := []byte(os.Getenv("HANDSHAKE_SECRET"))
+	base64Key := os.Getenv("HANDSHAKE_SECRET")
+	key, err := base64.StdEncoding.DecodeString(base64Key)
 	log.Info("HANDSHAKE_SECRET")
-	log.Info(string(key))
+	if err != nil {
+		return "", fmt.Errorf("не удалось декодировать ключ из base64: %w", err)
+	}
 	if len(key) != 32 {
 		return "", fmt.Errorf("ключ должен быть 32 байта")
 	}
