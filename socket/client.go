@@ -12,10 +12,8 @@ import (
 	"time"
 	"usbmuxd-client/crypt"
 
-	log2 "github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 )
-
-var log = log2.WithField("component", "client")
 
 // Tunnel описывает конфигурацию одного туннеля
 type Tunnel struct {
@@ -55,7 +53,7 @@ func isConnectionOpen(conn net.Conn) (bool, error) {
 }
 
 func startProxy(a, b net.Conn) {
-	log.WithFields(log2.Fields{
+	log.WithFields(log.Fields{
 		"from": a.RemoteAddr(),
 		"to":   b.RemoteAddr(),
 	}).Info("Начало проксирования")
@@ -76,7 +74,7 @@ func startProxy(a, b net.Conn) {
 		}
 		_, err := io.Copy(b, a)
 		if err != nil && !isClosedError(err) {
-			log.WithError(err).WithFields(log2.Fields{
+			log.WithError(err).WithFields(log.Fields{
 				"source": a.RemoteAddr(),
 				"dest":   b.RemoteAddr(),
 			}).Error("Ошибка A->B")
@@ -92,7 +90,7 @@ func startProxy(a, b net.Conn) {
 		}
 		_, err := io.Copy(a, b)
 		if err != nil && !isClosedError(err) {
-			log.WithError(err).WithFields(log2.Fields{
+			log.WithError(err).WithFields(log.Fields{
 				"source": b.RemoteAddr(),
 				"dest":   a.RemoteAddr(),
 			}).Error("Ошибка B->A")
@@ -208,7 +206,7 @@ func handleTCPListener(t Tunnel) {
 }
 
 func runTunnel(t Tunnel) {
-	log.WithFields(log2.Fields{
+	log.WithFields(log.Fields{
 		"local":     t.localAddr,
 		"handshake": t.handshake,
 	}).Info("Запуск туннеля")

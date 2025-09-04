@@ -8,10 +8,13 @@ import (
 	"fmt"
 	"io"
 	"os"
+
+	log "github.com/sirupsen/logrus"
 )
 
 func EncryptHandshake(plaintext string) (string, error) {
 	key := []byte(os.Getenv("HANDSHAKE_SECRET"))
+	log.Info(string(key))
 	if len(key) != 32 {
 		return "", fmt.Errorf("ключ должен быть 32 байта")
 	}

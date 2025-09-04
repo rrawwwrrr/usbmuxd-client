@@ -2,12 +2,15 @@ version: '3.8'
 
 services:
   ios:
-    build: .
+    build:
+      context: .
+      dockerfile: .infra/Dockerfile2
     privileged: true
     environment:
       - USBMUXD_HOST=192.168.48.146
       - USBMUXD_PORT=27071
-      - USBMUXD_SOCKET_ADDRESS=/var/run/usbmuxd
+      - USBMUXD_SOCKET_ADDRESS=/tmp/usbmuxd/usbmuxd
+      - HANDSHAKE_SECRET=w7F3L8+u1yKfVv0q5s3t9M6jR2aV9Hk0pQxYbJz4fGQ=
     tmpfs:
       - /tmp/usbmuxd
 #      - /var/run/usbmuxd
