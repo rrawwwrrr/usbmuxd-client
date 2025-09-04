@@ -124,7 +124,7 @@ func connectToServer(handshake string) (net.Conn, error) {
 		conn.Close()
 		return nil, err
 	}
-
+	log.WithField("handshake", handshake).Info("connectToServer success")
 	return conn, nil
 }
 
