@@ -7,6 +7,7 @@ services:
     environment:
       - USBMUXD_HOST=192.168.48.146
       - USBMUXD_PORT=27071
+      - USBMUXD_SOCKET=/var/run/usbmuxd
       - USBMUXD_SOCKET_ADDRESS=/var/run/usbmuxd
     tmpfs:
       - /tmp/usbmuxd

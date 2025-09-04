@@ -26,7 +26,7 @@ type Tunnel struct {
 var (
 	serverAddr   = os.Getenv("USBMUXD_HOST")
 	serverPort   = os.Getenv("USBMUXD_PORT")
-	serverSocket = os.Getenv("USBMUXD_SOCKET_ADDRESS")
+	serverSocket = os.Getenv("USBMUXD_SOCKET")
 	device       = os.Getenv("DEVICE")
 )
 
