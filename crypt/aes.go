@@ -8,14 +8,11 @@ import (
 	"fmt"
 	"io"
 	"os"
-
-	log "github.com/sirupsen/logrus"
 )
 
 func EncryptHandshake(plaintext string) (string, error) {
 	base64Key := os.Getenv("HANDSHAKE_SECRET")
 	key, err := base64.StdEncoding.DecodeString(base64Key)
-	log.Info("HANDSHAKE_SECRET")
 	if err != nil {
 		return "", fmt.Errorf("не удалось декодировать ключ из base64: %w", err)
 	}
