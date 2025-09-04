@@ -19,7 +19,7 @@ var log = log2.WithField("component", "client")
 // Tunnel описывает конфигурацию одного туннеля
 type Tunnel struct {
 	localAddr string // например: "127.0.0.1:7777" или "/var/run/usbmuxd"
-	handshake string // ключ для сервера: "forward" или "usbmuxd"
+	handshake string // udid устройсва
 }
 
 // Переменные окружения
@@ -27,11 +27,12 @@ var (
 	serverAddr   = os.Getenv("USBMUXD_HOST")
 	serverPort   = os.Getenv("USBMUXD_PORT")
 	serverSocket = os.Getenv("USBMUXD_SOCKET_ADDRESS")
+	device       = os.Getenv("DEVICE")
 )
 
 // tunnels — список туннелей, которые нужно запустить
 var tunnels = []Tunnel{
-	{localAddr: serverSocket, handshake: "00008030001454190EEB802E"},
+	{localAddr: serverSocket, handshake: "00008030001454190EEB802E"}, //device
 	//{localAddr: serverSocket, handshake: "usbmuxd"},
 	//{localAddr: "127.0.0.1:7777", handshake: "forward"},
 }
