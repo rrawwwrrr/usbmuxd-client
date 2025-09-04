@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"usbmuxd-client/crypt"
 
 	log2 "github.com/sirupsen/logrus"
 )
@@ -31,9 +32,8 @@ var (
 
 // tunnels — список туннелей, которые нужно запустить
 var tunnels = []Tunnel{
-	{localAddr: serverSocket, handshake: "00008030001454190EEB802E"},
-	//{localAddr: serverSocket, handshake: "usbmuxd"},
-	//{localAddr: "127.0.0.1:7777", handshake: "forward"},
+	{localAddr: serverSocket, handshake: "00008030001454190EEB802E usbmux"},
+	{localAddr: "127.0.0.1:7777", handshake: "00008030001454190EEB802E wda"},
 }
 
 func isClosedError(err error) bool {
@@ -112,8 +112,16 @@ func connectToServer(handshake string) (net.Conn, error) {
 		return nil, err
 	}
 
-	// Отправляем handshake
-	if _, err := conn.Write([]byte(handshake + "\n")); err != nil {
+	// Шифруем handshake
+	encryptedHandshake, err := crypt.EncryptHandshake(handshake)
+	if err != nil {
+		log.WithError(err).Error("Не удалось зашифровать handshake")
+		conn.Close()
+		return nil, err
+	}
+
+	// Отправляем зашифрованный handshake
+	if _, err := conn.Write([]byte(encryptedHandshake + "\n")); err != nil {
 		log.WithError(err).Error("Ошибка отправки handshake")
 		conn.Close()
 		return nil, err

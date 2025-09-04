@@ -10,4 +10,4 @@ stages:
 build:
   extends: .build
   only:
-    - main
+    - devops
