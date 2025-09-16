@@ -1,0 +1,15 @@
+include:
+  - project: 'cicd-template/build'
+    ref: main
+    file:
+      - 'build_harbor.yaml'
+
+stages:
+  - build
+
+build:
+  extends: .build
+  variables:
+    DOCKER_FILE_PATH: .infra/Dockerfile2
+  only:
+    - devops
