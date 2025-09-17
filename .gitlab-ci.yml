@@ -33,7 +33,7 @@ stages:
     - .artifactory-cleanup-action
   allow_failure: true
   variables:
-    X5_ARTIFACTORY_CLEANUP_ACTION_PATH: /xfarm/go-ios
+    X5_ARTIFACTORY_CLEANUP_ACTION_PATH: /xfarm/usbmuxd-client
     X5_ARTIFACTORY_CLEANUP_ACTION_LIMIT_TIME: "60minutes"
     X5_ARTIFACTORY_CLEANUP_ACTION_LIMIT_COUNT: 0
     X5_ARTIFACTORY_CLEANUP_ACTION_LOGIN: $REGISTRY_USER
@@ -47,7 +47,7 @@ stages:
   extends: .docker-buildx
   variables:
     X5_DOCKER_BUILDX_DOCKERFILE: ".infra/docker/Dockerfile"
-    X5_DOCKER_BUILDX_DESTINATION: $REGISTRY_URI/xfarm/go-ios:latest
+    X5_DOCKER_BUILDX_DESTINATION: $REGISTRY_URI/xfarm/usbmuxd-client:latest
     X5_DOCKER_BUILDX_DOCKERCONFIG: $DOCKER_AUTH_CONFIG
     X5_DOCKER_BUILDX_PUSH: "true"
     X5_ACTION_DEBUG: "true"
