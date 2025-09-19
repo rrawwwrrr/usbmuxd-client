@@ -245,6 +245,7 @@ func Run() {
 	if serverAddr == "" || serverPort == "" {
 		log.Fatal("Переменные окружения USBMUXD_HOST и USBMUXD_PORT должны быть установлены")
 	}
+	log.WithField("host:port", serverAddr+":"+serverPort).Info("Запуск клиента")
 
 	var wg sync.WaitGroup
 
