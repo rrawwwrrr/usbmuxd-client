@@ -26,12 +26,13 @@ var (
 	serverAddr   = os.Getenv("USBMUXD_HOST")
 	serverPort   = os.Getenv("USBMUXD_PORT")
 	serverSocket = os.Getenv("USBMUXD_SOCKET")
+	device       = os.Getenv("DEVICE")
 )
 
 // tunnels — список туннелей, которые нужно запустить
 var tunnels = []Tunnel{
-	{localAddr: serverSocket, handshake: "00008030001454190EEB802E usbmux"},
-	{localAddr: "127.0.0.1:7777", handshake: "00008030001454190EEB802E wda"},
+	{localAddr: serverSocket, handshake: device + " usbmux"},
+	{localAddr: "127.0.0.1:7777", handshake: device + " wda"},
 }
 
 func isClosedError(err error) bool {
