@@ -4,9 +4,9 @@ ENV GOPROXY="https://art.x5.ru/artifactory/api/go/go"
 
 # Обновляем список источников
 RUN rm -rf /etc/apt/sources.list && \
-  echo "deb https://art.x5.ru/artifactory/deb-debian-remote bullseye main" >> /etc/apt/sources.list && \
-  echo "deb https://art.x5.ru/artifactory/deb-debian-remote bullseye-updates main" >> /etc/apt/sources.list && \
-  echo "deb https://art.x5.ru/artifactory/deb-debian-security-remote bullseye-security main" >> /etc/apt/sources.list
+  echo "deb https://art.x5.ru/artifactory/deb-debian-remote bookworm main" >> /etc/apt/sources.list && \
+  echo "deb https://art.x5.ru/artifactory/deb-debian-remote bookworm-updates main" >> /etc/apt/sources.list && \
+  echo "deb https://art.x5.ru/artifactory/deb-debian-security-remote bookworm-security main" >> /etc/apt/sources.list
 
 # Добавляем корпоративные сертификаты
 COPY --from=docker-base-images-prod.x5.ru/x5-certs:latest /x5/certs/* /usr/local/share/ca-certificates/
@@ -23,13 +23,13 @@ COPY . .
 RUN go build -o client
 RUN chmod +x client
 
-FROM docker-registry.x5.ru/debian:bullseye-slim
+FROM docker-registry.x5.ru/debian:bookworm-slim
 
 # Обновляем список источников
 RUN rm -rf /etc/apt/sources.list && \
-  echo "deb https://art.x5.ru/artifactory/deb-debian-remote bullseye main" >> /etc/apt/sources.list && \
-  echo "deb https://art.x5.ru/artifactory/deb-debian-remote bullseye-updates main" >> /etc/apt/sources.list && \
-  echo "deb https://art.x5.ru/artifactory/deb-debian-security-remote bullseye-security main" >> /etc/apt/sources.list
+  echo "deb https://art.x5.ru/artifactory/deb-debian-remote bookworm main" >> /etc/apt/sources.list && \
+  echo "deb https://art.x5.ru/artifactory/deb-debian-remote bookworm-updates main" >> /etc/apt/sources.list && \
+  echo "deb https://art.x5.ru/artifactory/deb-debian-security-remote bookworm-security main" >> /etc/apt/sources.list
 
 # Добавляем корпоративные сертификаты
 COPY --from=docker-base-images-prod.x5.ru/x5-certs:latest /x5/certs/* /usr/local/share/ca-certificates/
