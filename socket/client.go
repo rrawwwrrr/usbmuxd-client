@@ -27,12 +27,18 @@ var (
 	serverPort   = os.Getenv("USBMUXD_PORT")
 	serverSocket = os.Getenv("USBMUXD_SOCKET")
 	device       = os.Getenv("DEVICE")
+	deviceType   = os.Getenv("DEVICE_TYPE")
 )
 
-// tunnels — список туннелей, которые нужно запустить
-var tunnels = []Tunnel{
+// tunnelsIos — список туннелей для айос
+var tunnelsIos = []Tunnel{
 	{localAddr: serverSocket, handshake: device + " usbmux"},
 	{localAddr: "127.0.0.1:7777", handshake: device + " wda"},
+}
+
+// tunnelsIos — список туннелей для андрюши
+var tunnelsAndroid = []Tunnel{
+	{localAddr: "127.0.0.1:5037", handshake: device + " adb"},
 }
 
 func isClosedError(err error) bool {
@@ -249,7 +255,13 @@ func Run() {
 	log.WithField("host:port", serverAddr+":"+serverPort).Info("Запуск клиента")
 
 	var wg sync.WaitGroup
-
+	var tunnels []Tunnel
+	//todo ниже 'deviceType == ""' для обратной совместимости, по возможности удалить
+	if deviceType == "ios" || deviceType == "" {
+		tunnels = tunnelsIos
+	} else if deviceType == "android" {
+		tunnels = tunnelsAndroid
+	}
 	for _, tunnel := range tunnels {
 		wg.Add(1)
 		go func(t Tunnel) {
