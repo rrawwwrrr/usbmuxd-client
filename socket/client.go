@@ -1,6 +1,7 @@
 package socket
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+
 	"usbmuxd-client/crypt"
 
 	log "github.com/sirupsen/logrus"
@@ -19,6 +21,7 @@ import (
 type Tunnel struct {
 	localAddr string // например: "127.0.0.1:7777" или "/var/run/usbmuxd"
 	handshake string // ключ для сервера: "forward" или "usbmuxd"
+	sync      bool   // если true, добавляем флаг sync в handshake
 }
 
 // Переменные окружения
@@ -27,190 +30,216 @@ var (
 	serverPort   = os.Getenv("USBMUXD_PORT")
 	serverSocket = os.Getenv("USBMUXD_SOCKET")
 	device       = os.Getenv("DEVICE")
+	deviceType   = os.Getenv("DEVICE_TYPE")
 )
 
-// tunnels — список туннелей, которые нужно запустить
-var tunnels = []Tunnel{
+// tunnelsIos — список туннелей для iOS
+var tunnelsIos = []Tunnel{
 	{localAddr: serverSocket, handshake: device + " usbmux"},
 	{localAddr: "127.0.0.1:7777", handshake: device + " wda"},
+}
+
+// tunnelsAndroid — список туннелей для Android
+var tunnelsAndroid = []Tunnel{
+	{localAddr: "127.0.0.1:5037", handshake: device + " adb"},
+	{localAddr: "127.0.0.1:8200", handshake: device + " appium", sync: true},
 }
 
 func isClosedError(err error) bool {
 	if err == nil {
 		return false
 	}
-	opErr, ok := err.(*net.OpError)
-	return ok && (opErr.Err.Error() == "use of closed network connection" || opErr.Err.Error() == "connection reset by peer")
-}
-
-func isConnectionOpen(conn net.Conn) (bool, error) {
-	if conn == nil {
-		return false, errors.New("соединение равно nil")
-	}
-	if _, err := conn.Write(nil); err != nil {
-		return false, err
-	}
-	return true, nil
+	return errors.Is(err, net.ErrClosed) ||
+		strings.Contains(err.Error(), "use of closed network connection") ||
+		strings.Contains(err.Error(), "connection reset by peer") ||
+		strings.Contains(err.Error(), "broken pipe") ||
+		err == io.EOF
 }
 
 func startProxy(a, b net.Conn) {
-	log.WithFields(log.Fields{
-		"from": a.RemoteAddr(),
-		"to":   b.RemoteAddr(),
-	}).Info("Начало проксирования")
-
 	var wg sync.WaitGroup
 	wg.Add(2)
 
-	closeOnce := sync.OnceFunc(func() {
-		a.Close()
-		b.Close()
-	})
+	closeOnce := &sync.Once{}
+	closeBoth := func() {
+		closeOnce.Do(func() {
+			a.Close()
+			b.Close()
+		})
+	}
 
 	go func() {
 		defer wg.Done()
-		if ok, _ := isConnectionOpen(a); !ok {
-			log.Debug("A уже закрыто, не запускаем A->B")
-			return
-		}
-		_, err := io.Copy(b, a)
-		if err != nil && !isClosedError(err) {
-			log.WithError(err).WithFields(log.Fields{
-				"source": a.RemoteAddr(),
-				"dest":   b.RemoteAddr(),
-			}).Error("Ошибка A->B")
-		}
-		closeOnce()
+		defer closeBoth()
+		io.Copy(b, a)
 	}()
 
 	go func() {
 		defer wg.Done()
-		if ok, _ := isConnectionOpen(b); !ok {
-			log.Debug("B уже закрыто, не запускаем B->A")
-			return
-		}
-		_, err := io.Copy(a, b)
-		if err != nil && !isClosedError(err) {
-			log.WithError(err).WithFields(log.Fields{
-				"source": b.RemoteAddr(),
-				"dest":   a.RemoteAddr(),
-			}).Error("Ошибка B->A")
-		}
-		closeOnce()
+		defer closeBoth()
+		io.Copy(a, b)
 	}()
 
 	wg.Wait()
-	log.Info("Проксирование завершено")
 }
 
-func connectToServer(handshake string) (net.Conn, error) {
-	serverFullAddr := fmt.Sprintf("%s:%s", serverAddr, serverPort)
-	conn, err := net.DialTimeout("tcp", serverFullAddr, 10*time.Second)
+// connectToServer устанавливает соединение с сервером
+func connectToServer(handshake string, sync bool) (net.Conn, error) {
+	addr := fmt.Sprintf("%s:%s", serverAddr, serverPort)
+
+	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
 	if err != nil {
-		log.WithError(err).WithField("server", serverFullAddr).Error("Ошибка подключения к серверу")
 		return nil, err
 	}
 
-	// Шифруем handshake
-	encryptedHandshake, err := crypt.EncryptHandshake(handshake)
+	full := handshake
+	if sync {
+		full += " sync"
+	}
+
+	encrypted, err := crypt.EncryptHandshake(full)
 	if err != nil {
-		log.WithError(err).Error("Не удалось зашифровать handshake")
 		conn.Close()
 		return nil, err
 	}
 
-	// Отправляем зашифрованный handshake
-	if _, err := conn.Write([]byte(encryptedHandshake + "\n")); err != nil {
-		log.WithError(err).Error("Ошибка отправки handshake")
+	if _, err := conn.Write([]byte(encrypted + "\n")); err != nil {
 		conn.Close()
 		return nil, err
 	}
-	log.WithField("handshake", handshake).Info("connectToServer success")
+
+	// ⬇⬇⬇ ВОТ КЛЮЧЕВОЕ МЕСТО ⬇⬇⬇
+	if !sync {
+		buf := make([]byte, 16)
+		conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+		n, err := conn.Read(buf)
+		conn.SetReadDeadline(time.Time{})
+		if err != nil {
+			conn.Close()
+			return nil, err
+		}
+
+		resp := strings.TrimSpace(string(buf[:n]))
+		if resp != "OK" {
+			conn.Close()
+			return nil, fmt.Errorf("server error: %s", resp)
+		}
+	}
+
 	return conn, nil
 }
 
-// handleUnixSocket создаёт Unix-сокет и слушает на нём
-func handleUnixSocket(t Tunnel) {
-	socketPath := t.localAddr
-
-	// Очищаем путь от старого сокета, если он есть
-	os.Remove(socketPath)
-
-	// Создаём директорию, если её нет
-	if err := os.MkdirAll(filepath.Dir(socketPath), 0755); err != nil {
-		log.WithError(err).WithField("path", filepath.Dir(socketPath)).Fatal("Не удалось создать директорию для сокета")
-	}
-
-	listener, err := net.Listen("unix", socketPath)
+func startListener(t Tunnel) net.Listener {
+	l, err := net.Listen("tcp", t.localAddr)
 	if err != nil {
-		log.WithError(err).WithField("socket", socketPath).Fatal("Не удалось создать Unix-сокет")
+		log.WithError(err).Error("Не удалось создать listener")
+		return nil
 	}
-	defer listener.Close()
 
-	log.WithField("socket", socketPath).Info("Создан и слушается Unix-сокет")
+	log.WithField("local", t.localAddr).Info("Локальный порт открыт")
 
+	go func() {
+		for {
+			conn, err := l.Accept()
+			if err != nil {
+				return
+			}
+
+			go func(c net.Conn) {
+				defer c.Close()
+
+				serverConn, err := connectToServer(t.handshake, false)
+				if err != nil {
+					log.WithError(err).Error("Ошибка подключения к серверу")
+					return
+				}
+				defer serverConn.Close()
+
+				startProxy(c, serverConn)
+			}(conn)
+		}
+	}()
+
+	return l
+}
+
+func runSyncTunnel(t Tunnel) {
 	for {
-		localConn, err := listener.Accept()
+		conn, err := connectToServer(t.handshake, true)
 		if err != nil {
-			log.WithError(err).Error("Ошибка принятия соединения на Unix-сокете")
+			log.Warn("Не удалось подключиться к sync-каналу, retry...")
+			time.Sleep(2 * time.Second)
 			continue
 		}
 
-		log.WithField("client", localConn.RemoteAddr()).Info("Новое подключение к Unix-сокету")
+		log.Info("Sync-канал установлен")
 
-		// Подключаемся к серверу
-		serverConn, err := connectToServer(t.handshake)
-		if err != nil {
-			log.WithError(err).Error("Не удалось подключиться к серверу")
-			localConn.Close()
-			continue
+		scanner := bufio.NewScanner(conn)
+		var listener net.Listener
+
+		for scanner.Scan() {
+			msg := strings.TrimSpace(scanner.Text())
+
+			switch msg {
+			case "PORT_READY":
+				if listener == nil {
+					log.Info("PORT_READY → открываем порт")
+					listener = startListener(t)
+				}
+
+			case "PORT_DOWN":
+				if listener != nil {
+					log.Warn("PORT_DOWN → закрываем порт")
+					listener.Close()
+					listener = nil
+				}
+			}
 		}
 
-		// Запускаем прокси
-		go startProxy(localConn, serverConn)
+		log.Warn("Sync-соединение потеряно")
+		if listener != nil {
+			listener.Close()
+		}
+		conn.Close()
+		time.Sleep(2 * time.Second)
 	}
 }
 
-// handleTCPListener создаёт TCP-слушателя и перенаправляет подключения
-func handleTCPListener(t Tunnel) {
-	tcpAddr := t.localAddr
+// Unix socket
+func handleUnixSocket(t Tunnel) {
+	os.Remove(t.localAddr)
+	os.MkdirAll(filepath.Dir(t.localAddr), 0755)
 
-	// Создаём TCP-слушателя
-	listener, err := net.Listen("tcp", tcpAddr)
+	l, err := net.Listen("unix", t.localAddr)
 	if err != nil {
-		log.WithError(err).WithField("address", tcpAddr).Fatal("Не удалось создать TCP-слушателя")
+		log.Fatal(err)
 	}
-	defer listener.Close()
-
-	log.WithField("address", tcpAddr).Info("Создан и слушается TCP-слушатель")
 
 	for {
-		localConn, err := listener.Accept()
+		c, err := l.Accept()
 		if err != nil {
-			log.WithError(err).Error("Ошибка принятия соединения на TCP-порту")
 			continue
 		}
 
-		log.WithField("client", localConn.RemoteAddr()).Info("Новое подключение к TCP-порту")
+		go func(conn net.Conn) {
+			defer conn.Close()
 
-		// Подключаемся к серверу
-		serverConn, err := connectToServer(t.handshake)
-		if err != nil {
-			log.WithError(err).Error("Не удалось подключиться к серверу")
-			localConn.Close()
-			continue
-		}
+			serverConn, err := connectToServer(t.handshake, false)
+			if err != nil {
+				return
+			}
+			defer serverConn.Close()
 
-		// Запускаем прокси
-		go startProxy(localConn, serverConn)
+			startProxy(conn, serverConn)
+		}(c)
 	}
 }
 
 func runTunnel(t Tunnel) {
-	log.WithFields(log.Fields{
-		"local":     t.localAddr,
-		"handshake": t.handshake,
-	}).Info("Запуск туннеля")
+	if t.sync {
+		runSyncTunnel(t)
+		return
+	}
 
 	// Если это Unix-сокет — создаём и слушаем
 	if strings.HasPrefix(t.localAddr, "/") {
@@ -218,46 +247,29 @@ func runTunnel(t Tunnel) {
 		return
 	}
 
-	// Если это TCP-адрес — создаём TCP-слушателя
-	if strings.Contains(t.localAddr, ":") {
-		handleTCPListener(t)
-		return
-	}
-
-	// Иначе — обычное TCP-подключение
-	serverConn, err := connectToServer(t.handshake)
-	if err != nil {
-		log.WithError(err).Error("Не удалось подключиться к серверу")
-		return
-	}
-
-	localConn, err := net.Dial("tcp", t.localAddr)
-	if err != nil {
-		log.WithError(err).WithField("local", t.localAddr).Error("Ошибка подключения к локальному ресурсу")
-		serverConn.Close()
-		return
-	}
-
-	startProxy(localConn, serverConn)
+	startListener(t)
 }
 
-// Run запускает все туннели из списка
 func Run() {
-	if serverAddr == "" || serverPort == "" {
-		log.Fatal("Переменные окружения USBMUXD_HOST и USBMUXD_PORT должны быть установлены")
-	}
-	log.WithField("host:port", serverAddr+":"+serverPort).Info("Запуск клиента")
-
-	var wg sync.WaitGroup
-
-	for _, tunnel := range tunnels {
-		wg.Add(1)
-		go func(t Tunnel) {
-			defer wg.Done()
-			runTunnel(t)
-		}(tunnel)
+	if serverAddr == "" || serverPort == "" || device == "" {
+		log.Fatal("Не заданы обязательные ENV")
 	}
 
-	wg.Wait()
-	log.Info("Все туннели завершили работу")
+	var tunnels []Tunnel
+
+	if deviceType == "ios" || deviceType == "" {
+		tunnels = tunnelsIos
+		log.Info("Используем туннели для iOS")
+	} else if deviceType == "android" {
+		tunnels = tunnelsAndroid
+		log.Info("Используем туннели для Android")
+	} else {
+		log.Fatalf("Неизвестный тип устройства: %s", deviceType)
+	}
+
+	for _, t := range tunnels {
+		go runTunnel(t)
+	}
+
+	select {} // держим процесс живым
 }

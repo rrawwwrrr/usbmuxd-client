@@ -10,6 +10,6 @@ stages:
 build:
   extends: .build
   variables:
-    DOCKER_FILE_PATH: .infra/Dockerfile2
+    DOCKER_FILE_PATH: .infra/docker/Dockerfile2
   only:
-    - devops
+    - develop
