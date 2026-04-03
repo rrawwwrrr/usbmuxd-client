@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  ios:
+    build:
+      context: .
+      dockerfile: .infra/docker/Dockerfile.debug
+    privileged: true
+    entrypoint:
+      - /test.sh
+#    ports:
+#      - "5037:5037"
+    environment:
+      - USBMUXD_HOST=192.168.48.146
+      - USBMUXD_PORT=27015
+      - DEVICE=f2c1d36
+      - DEVICE_TYPE=android
+      - HANDSHAKE_SECRET=w7F3L8+u1yKfVv0q5s3t9M6jR2aV9Hk0pQxYbJz4fGQ=
+    volumes:
+      - "./test.sh:/test.sh"
+      - "./adb:/adb"
+#    tmpfs:
+#      - /tmp/usbmuxd
+##      - /var/run/usbmuxd
