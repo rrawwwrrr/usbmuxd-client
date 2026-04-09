@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -49,7 +50,7 @@ var tunnelsIos = []Tunnel{
 // tunnelsAndroid — список туннелей для Android
 var tunnelsAndroid = []Tunnel{
 	{localAddr: "127.0.0.1:5037", handshake: device + " adb", persistent: true},
-	{localAddr: "127.0.0.1:8200", handshake: device + " appium", sync: true},
+	{localAddr: "127.0.0.1:0", handshake: device + " appium", sync: true}, // динамические порты (8200-8299)
 }
 
 func isClosedError(err error) bool {
@@ -171,6 +172,16 @@ func startListener(t Tunnel) net.Listener {
 }
 
 func runSyncTunnel(t Tunnel) {
+	// listeners: порт → активный net.Listener (для динамических портов Appium)
+	listeners := make(map[int]net.Listener)
+
+	closeAll := func() {
+		for p, l := range listeners {
+			l.Close()
+			delete(listeners, p)
+		}
+	}
+
 	for {
 		conn, err := connectToServer(t.handshake, true)
 		if err != nil {
@@ -182,34 +193,97 @@ func runSyncTunnel(t Tunnel) {
 		log.Info("Sync-канал установлен")
 
 		scanner := bufio.NewScanner(conn)
-		var listener net.Listener
-
 		for scanner.Scan() {
-			msg := strings.TrimSpace(scanner.Text())
+			line := strings.TrimSpace(scanner.Text())
+			cmd, arg, _ := strings.Cut(line, " ")
 
-			switch msg {
+			switch cmd {
 			case "PORT_READY":
-				if listener == nil {
-					log.Info("PORT_READY → открываем порт")
-					listener = startListener(t)
+				port := parsePort(arg)
+				if port == 0 {
+					// Обратная совместимость: PORT_READY без номера → используем дефолтный порт из handshake
+					log.Info("PORT_READY (legacy) → порт из handshake")
+					if _, ok := listeners[0]; !ok {
+						l := startListener(t)
+						if l != nil {
+							listeners[0] = l
+						}
+					}
+					continue
+				}
+				if _, ok := listeners[port]; ok {
+					continue // уже открыт
+				}
+				log.Infof("PORT_READY %d → открываем localhost:%d", port, port)
+				l := startListenerOnPort(t, port)
+				if l != nil {
+					listeners[port] = l
 				}
 
 			case "PORT_DOWN":
-				if listener != nil {
-					log.Warn("PORT_DOWN → закрываем порт")
-					listener.Close()
-					listener = nil
+				port := parsePort(arg)
+				if port == 0 {
+					// Legacy: PORT_DOWN без номера — закрываем всё
+					log.Warn("PORT_DOWN (legacy) → закрываем все порты")
+					closeAll()
+					continue
+				}
+				if l, ok := listeners[port]; ok {
+					log.Warnf("PORT_DOWN %d → закрываем localhost:%d", port, port)
+					l.Close()
+					delete(listeners, port)
 				}
 			}
 		}
 
 		log.Warn("Sync-соединение потеряно")
-		if listener != nil {
-			listener.Close()
-		}
+		closeAll()
 		conn.Close()
 		time.Sleep(2 * time.Second)
 	}
+}
+
+func parsePort(s string) int {
+	if s == "" {
+		return 0
+	}
+	p, err := strconv.Atoi(s)
+	if err != nil || p <= 0 || p > 65535 {
+		return 0
+	}
+	return p
+}
+
+// startListenerOnPort запускает listener на конкретном порту и проксирует через hub-server.
+func startListenerOnPort(t Tunnel, port int) net.Listener {
+	addr := fmt.Sprintf("127.0.0.1:%d", port)
+	l, err := net.Listen("tcp", addr)
+	if err != nil {
+		log.Errorf("Не удалось открыть %s: %v", addr, err)
+		return nil
+	}
+	// Формируем handshake с конкретным портом: "<serial> appium port:N"
+	handshake := fmt.Sprintf("%s port:%d", t.handshake, port)
+	go func() {
+		defer l.Close()
+		for {
+			conn, err := l.Accept()
+			if err != nil {
+				return
+			}
+			go func(c net.Conn) {
+				defer c.Close()
+				serverConn, err := connectToServer(handshake, false)
+				if err != nil {
+					log.WithError(err).Errorf("Ошибка подключения к серверу для порта %d", port)
+					return
+				}
+				defer serverConn.Close()
+				startProxy(c, serverConn)
+			}(conn)
+		}
+	}()
+	return l
 }
 
 // Unix socket
